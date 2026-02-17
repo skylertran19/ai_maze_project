@@ -26,6 +26,6 @@ def load_maze_from_png(filename, threshold=128):
     return maze
 
 # Example usage
-maze = load_maze_from_png("maze.png")
+maze = load_maze_from_png("MAZE_0.png")
 print(maze)
 
