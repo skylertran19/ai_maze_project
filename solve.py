@@ -1,72 +1,92 @@
 from PIL import Image
 import numpy as np
-from collections import deque
 import matplotlib.pyplot as plt
+from collections import deque
 
-
-def load_maze_from_png(filename, threshold=128):
+# ---------------- LOAD MAZE ----------------
+def load_maze(filename):
     img = Image.open(filename).convert("L")
     maze_array = np.array(img)
-    maze = (maze_array < threshold).astype(int)
+    
+    # Auto-detect path vs wall
+    if np.mean(maze_array) > 128:
+        maze = (maze_array < 128).astype(int)  # 1 = wall, 0 = free
+    else:
+        maze = (maze_array > 128).astype(int)
     return maze
 
+# ---------------- BFS SOLVER ----------------
+def bfs_solve(maze, start, goal):
+    queue = deque([start])
+    visited = set([start])
+    parent = {}
+    moves = [(-1,0),(1,0),(0,-1),(0,1)]  # up, down, left, right
 
-def solve_maze(maze, start, end):
-    rows, cols = maze.shape
-    visited = np.zeros_like(maze)
-    prev = np.full((rows, cols, 2), -1)
+    while queue:
+        current = queue.popleft()
+        if current == goal:
+            # Reconstruct path
+            path = []
+            while current != start:
+                path.append(current)
+                current = parent[current]
+            path.append(start)
+            return path[::-1]  # start -> goal
 
-    q = deque([start])
-    visited[start] = 1
-
-    directions = [(-1,0), (1,0), (0,-1), (0,1)]
-
-    while q:
-        r, c = q.popleft()
-
-        if (r, c) == end:
-            break
-
-        for dr, dc in directions:
+        r, c = current
+        for dr, dc in moves:
             nr, nc = r + dr, c + dc
+            if 0 <= nr < maze.shape[0] and 0 <= nc < maze.shape[1]:
+                if maze[nr, nc] == 0 and (nr, nc) not in visited:
+                    visited.add((nr, nc))
+                    parent[(nr, nc)] = current
+                    queue.append((nr, nc))
+    return None  # no path found
 
-            if 0 <= nr < rows and 0 <= nc < cols and maze[nr, nc] == 0 and not visited[nr, nc]:
-                q.append((nr, nc))
-                visited[nr, nc] = 1
-                prev[nr, nc] = (r, c)
-
-    path = []
-    r, c = end
-
-    while prev[r, c][0] != -1:
-        path.append((r, c))
-        r, c = prev[r, c]
-
-    path.append(start)
-    path.reverse()
-
-    return path
-
-
-def visualize_maze(maze, path=None):
-    plt.figure(figsize=(10,10))
+# ---------------- VISUALIZE ----------------
+def visualize(maze, path=None):
+    plt.figure(figsize=(10, 10))
     plt.imshow(maze, cmap="gray")
-
     if path:
         pr, pc = zip(*path)
-        plt.plot(pc, pr, color="red", linewidth=2)
-
+        plt.plot(pc, pr, linewidth=2, color='red')
     plt.axis("off")
+    plt.title("Maze Solution (BFS)" if path else "Maze")
     plt.show()
 
+# ---------------- MAIN ----------------
+maze = load_maze("MAZE_0.png")
 
-# -------- RUN THE PROGRAM --------
+# ---------------- AUTO-SELECT START AND GOAL ----------------
+rows, cols = maze.shape
+print(f"Maze size: {rows} x {cols}")
 
-maze = load_maze_from_png("MAZE_0.png")
+# Start: first free cell from top-left
+start = None
+for r in range(rows):
+    for c in range(cols):
+        if maze[r, c] == 0:
+            start = (r, c)
+            break
+    if start:
+        break
 
-start = (1,1)
-end = (maze.shape[0]-2, maze.shape[1]-2)
+# Goal: first free cell from bottom-right
+goal = None
+for r in reversed(range(rows)):
+    for c in reversed(range(cols)):
+        if maze[r, c] == 0:
+            goal = (r, c)
+            break
+    if goal:
+        break
 
-path = solve_maze(maze, start, end)
+print(f"Start set to: {start}, Goal set to: {goal}")
 
-visualize_maze(maze, path)
+# ---------------- SOLVE ----------------
+solution_path = bfs_solve(maze, start, goal)
+if solution_path is None:
+    print("No path found. Check maze or start/goal positions.")
+else:
+    print("Solution path length:", len(solution_path))
+    visualize(maze, solution_path)
