@@ -1,3 +1,5 @@
+
+
 from PIL import Image
 import numpy as np
 
@@ -28,4 +30,3 @@ def load_maze_from_png(filename, threshold=128):
 # Example usage
 maze = load_maze_from_png("MAZE_0.png")
 print(maze)
-
