@@ -5,9 +5,11 @@ from collections import deque
 # Matrix codes:
 # 0 = Empty/navigable cell
 # 1 = Wall
-# 4 = Death pits
-# 5 = Teleport pad
-# 6 = Confusion pad
+# 2 = Start 'S' (empty space on outer edge)
+# 3 = Goal/Exit 'G' (empty space on outer edge)
+# 4 = Death pits 'P' 🔥
+# 5 = Teleport pad 'T' 🟢#41d281 ✳️#3cc676 🟡#ecb331 ✴️#ff8536 🟣#714eb5 🔯#814de5
+# 6 = Confusion pad 'C' 😵‍💫 (not specified as 6 in the instructions) #ffc534 face #5e3327 lines
 
 TP_G = "green"      # Green teleport
 TP_O = "orange"     # Orange teleport
@@ -20,7 +22,9 @@ def get_color_category(r, g, b):
         return (1, None)
     
     # Teleport pads 🟡✴️ - orange-yellow R=255, check FIRST
-    if r == 255 and 160 < g < 210 and 50 < b < 80:
+    if r == 236 and 160 < g < 200 and 30 < b < 60: #rgb(236 179 49)
+        return (5, TP_O)
+    if r == 255 and 115 < g < 160 and 36 < b < 75: #rgb(255 133 54)
         return (5, TP_O)
     
     # Both death and confusion are brown, use R value as primary separator:
@@ -107,12 +111,6 @@ def load_hazards_from_image(filename):
                 if len(sample_pixels[6]) < 3:
                     sample_pixels[6].append((pixel[0], pixel[1], pixel[2]))
     
-    # Print debug info
-    print(f"Pixel counts by code: {detected_codes}")
-    print(f"Death pit samples: {sample_pixels[4]}")
-    print(f"Teleport samples: {sample_pixels[5]}")
-    print(f"Confusion samples: {sample_pixels[6]}")
-    
     # Cluster pixels into individual hazards
     death_pits = cluster_nearby_pixels(death_pit_pixels, max_distance=10)
     confusion_pits = cluster_nearby_pixels(confusion_pit_pixels, max_distance=10)
@@ -182,15 +180,11 @@ def solve_maze(filename):
     return maze
 
 if __name__ == "__main__":
-    # Solve MAZE_0 to get the base maze
     maze = solve_maze("MAZE_0.png")
     
-    # Load hazards from MAZE_1
-    print("\n=== Loading Hazards from MAZE_1 ===")
     death_pits, teleports, confusion_pits = load_hazards_from_image("MAZE_1.png")
     
     # Add hazard codes directly from original image pixels to maze
-    # This is more reliable than clustering and then scaling
     img = Image.open("MAZE_1.png").convert("RGB")
     img_array = np.array(img)
     
