@@ -2,6 +2,133 @@ from PIL import Image, ImageDraw
 import numpy as np
 from collections import deque
 
+# Matrix codes:
+# 0 = Empty/navigable cell
+# 1 = Wall
+# 4 = Death pits
+# 5 = Teleport pad
+# 6 = Confusion pad
+
+TP_G = "green"      # Green teleport
+TP_O = "orange"     # Orange teleport
+TP_P = "purple"     # Purple teleport
+
+def get_color_category(r, g, b):
+    if r > 200 and g > 200 and b > 200: #navigable
+        return (0, None)
+    if r < 50 and g < 50 and b < 50: #black | wall
+        return (1, None)
+    
+    # Teleport pads 🟡✴️ - orange-yellow R=255, check FIRST
+    if r == 255 and 160 < g < 210 and 50 < b < 80:
+        return (5, TP_O)
+    
+    # Both death and confusion are brown, use R value as primary separator:
+    # Death pit 🔥: R >= 159 (159, 159, 163, 167, 171, 172)
+    # Confusion 😵‍💫: R <= 158 (122-158)
+    
+    # Death pit - brown with R >= 159
+    if r >= 159 and 95 < g < 135 and 40 < b < 75:
+        return (4, "fire")
+    
+    # Confusion - brown with R <= 158
+    if r <= 158 and 75 < g < 135 and 60 < b < 75:
+        return (6, "confusion")
+    
+    # Green teleports
+    if g > 180 and r < 100 and b > 80 and b < 160:
+        return (5, TP_G)
+    
+    # Purple teleports
+    if 100 < r < 140 and g < 100 and b > 150:
+        return (5, TP_P)
+    
+    return (0, None)
+
+def cluster_nearby_pixels(pixels_list, max_distance=10):
+    if not pixels_list:
+        return []
+    
+    pixels_list = list(pixels_list)
+    clusters = []
+    used = set()
+    
+    for i, (r1, c1) in enumerate(pixels_list):
+        if i in used:
+            continue
+        
+        cluster = [(r1, c1)]
+        used.add(i)
+        
+        for j, (r2, c2) in enumerate(pixels_list):
+            if j not in used:
+                distance = ((r1 - r2) ** 2 + (c1 - c2) ** 2) ** 0.5
+                if distance <= max_distance:
+                    cluster.append((r2, c2))
+                    used.add(j)
+        
+        avg_r = int(sum(r for r, c in cluster) / len(cluster))
+        avg_c = int(sum(c for r, c in cluster) / len(cluster))
+        clusters.append((avg_r, avg_c))
+    
+    return clusters
+
+def load_hazards_from_image(filename):
+    """Load hazards from image and return clustered coordinates."""
+    img = Image.open(filename).convert("RGB")
+    img_array = np.array(img)
+    
+    death_pit_pixels = []
+    confusion_pit_pixels = []
+    teleport_pixels = []
+    
+    # Track what colors we actually detect
+    detected_codes = {0: 0, 1: 0, 4: 0, 5: 0, 6: 0}
+    sample_pixels = {4: [], 5: [], 6: []}
+    
+    rows, cols = img_array.shape[0], img_array.shape[1]
+    
+    for r in range(rows):
+        for c in range(cols):
+            pixel = img_array[r, c]
+            code, color_info = get_color_category(pixel[0], pixel[1], pixel[2])
+            detected_codes[code] = detected_codes.get(code, 0) + 1
+            
+            if code == 4:
+                death_pit_pixels.append((r, c))
+                if len(sample_pixels[4]) < 3:
+                    sample_pixels[4].append((pixel[0], pixel[1], pixel[2]))
+            elif code == 5:
+                teleport_pixels.append((r, c))
+                if len(sample_pixels[5]) < 3:
+                    sample_pixels[5].append((pixel[0], pixel[1], pixel[2]))
+            elif code == 6:
+                confusion_pit_pixels.append((r, c))
+                if len(sample_pixels[6]) < 3:
+                    sample_pixels[6].append((pixel[0], pixel[1], pixel[2]))
+    
+    # Print debug info
+    print(f"Pixel counts by code: {detected_codes}")
+    print(f"Death pit samples: {sample_pixels[4]}")
+    print(f"Teleport samples: {sample_pixels[5]}")
+    print(f"Confusion samples: {sample_pixels[6]}")
+    
+    # Cluster pixels into individual hazards
+    death_pits = cluster_nearby_pixels(death_pit_pixels, max_distance=10)
+    confusion_pits = cluster_nearby_pixels(confusion_pit_pixels, max_distance=10)
+    teleports = cluster_nearby_pixels(teleport_pixels, max_distance=10)
+    
+    return death_pits, teleports, confusion_pits
+
+def scale_to_64x64(r, c, img_size=1026):
+    """Scale coordinates from full image to 64x64 grid."""
+    scaled_r = int(r * 64 / img_size)
+    scaled_c = int(c * 64 / img_size)
+    # Clamp to valid range
+    scaled_r = min(scaled_r, 63)
+    scaled_c = min(scaled_c, 63)
+    return scaled_r, scaled_c
+
 #Load maze image and converts to binary grid (1=wall,0=path).
 def maze_loader(filename, threshold=128):
     img = Image.open(filename).convert("L")  # grayscale
@@ -51,6 +178,45 @@ def solve_maze(filename):
     output_path = filename.replace(".png", "_bfs.png")
     img_color.save(output_path)
     print(f"Saved to {output_path}")
+    
+    return maze
 
 if __name__ == "__main__":
-    solve_maze("MAZE_0.png")
+    # Solve MAZE_0 to get the base maze
+    maze = solve_maze("MAZE_0.png")
+    
+    # Load hazards from MAZE_1
+    print("\n=== Loading Hazards from MAZE_1 ===")
+    death_pits, teleports, confusion_pits = load_hazards_from_image("MAZE_1.png")
+    
+    # Add hazard codes directly from original image pixels to maze
+    # This is more reliable than clustering and then scaling
+    img = Image.open("MAZE_1.png").convert("RGB")
+    img_array = np.array(img)
+    
+    for r in range(img_array.shape[0]):
+        for c in range(img_array.shape[1]):
+            pixel = img_array[r, c]
+            code, _ = get_color_category(pixel[0], pixel[1], pixel[2])
+            
+            if code in [4, 5, 6]:
+                scaled_r, scaled_c = scale_to_64x64(r, c)
+                maze[scaled_r, scaled_c] = code
+    
+    # Print hazard locations from the updated maze array
+    print("\n=== Hazards in Maze ===")
+    
+    death_pit_coords = list(zip(*np.where(maze == 4)))
+    print(f"\nDeath Pits ({len(death_pit_coords)}):")
+    for coord in sorted(death_pit_coords):
+        print(f"  {coord}")
+    
+    teleport_coords = list(zip(*np.where(maze == 5)))
+    print(f"\nTeleport Pads ({len(teleport_coords)}):")
+    for coord in sorted(teleport_coords):
+        print(f"  {coord}")
+    
+    confusion_coords = list(zip(*np.where(maze == 6)))
+    print(f"\nConfusion Pads ({len(confusion_coords)}):")
+    for coord in sorted(confusion_coords):
+        print(f"  {coord}")
