@@ -1,6 +1,7 @@
 from PIL import Image, ImageDraw
 import numpy as np
 from collections import deque
+from distinct_colors_dict import DISTINCT_COLORS
 
 # Matrix codes:
 # 0 = Empty/navigable cell
@@ -14,38 +15,33 @@ TP_G = "green"      # 🟢 → ✳️
 TP_O = "orange"    # 🟡 → ✴️
 TP_P = "purple"    # 🟣 → 🔯
 
+# Build color lookup dictionaries from distinct_colors_dict
+COLOR_TO_HAZARD = {}
+for hazard_name, colors in DISTINCT_COLORS.items():
+    for color in colors:
+        COLOR_TO_HAZARD[color] = hazard_name
+
 def get_color_category(r, g, b):
-    if r > 200 and g > 200 and b > 200: #navigable
+    color = (r, g, b)
+    # Check if color is in the distinct colors dictionary
+    if color in COLOR_TO_HAZARD:
+        hazard_name = COLOR_TO_HAZARD[color]
+        
+        if hazard_name == "deathpit":
+            return (4, "deathpit")
+        elif hazard_name == "confusion":
+            return (6, "confusion")
+        elif hazard_name == "greentp" or hazard_name == "greentpdest":
+            return (5, "TP_G")
+        elif hazard_name == "yellowtp" or hazard_name == "orangetpdest":
+            return (5, "TP_O")
+        elif hazard_name == "purpletp" or hazard_name == "purpletpdest":
+            return (5, "TP_P")
+    
+    if r > 250 and g > 250 and b > 250:  # navigable (light)
         return (0, None)
-    if r < 50 and g < 50 and b < 50: #black | wall
+    if r < 10 and g < 10 and b < 10:  # black | wall
         return (1, None)
-    
-    #🟡✴️ - orange-yellow R=255, check FIRST
-    if r == 255 and 160 < g < 210 and 50 < b < 80:
-        return (5, TP_O)
-    
-    # Both death and confusion are brown, use R value as primary separator:
-    # Death pit 🔥: R >= 159 (159, 159, 163, 167, 171, 172)
-    # Confusion 😵‍💫: R <= 158 (122-158)
-    
-    # Death pit - brown with R >= 159
-    if r >= 159 and 95 < g < 135 and 40 < b < 75:
-        return (4, "fire")
-    
-    # Confusion rgb(255 196 68) and rgb(86 60 73)
-    if r <= 158 and 75 < g < 135 and 60 < b < 75:
-        return (6, "confusion")
-    
-    # ✳️ rgb(86 208 138) and rgb(146 223 181)
-    if g > 180 and r < 100 and b > 80 and b < 160:
-        return (5, TP_G)
-    #🟢 
-    if g > 180 and r < 100 and b > 80 and b < 160:
-        return (5, TP_G)
-    
-    # Purple teleports
-    if 100 < r < 140 and g < 100 and b > 150:
-        return (5, TP_P)
     
     return (0, None)
 
@@ -109,12 +105,6 @@ def load_hazards_from_image(filename):
                 confusion_pit_pixels.append((r, c))
                 if len(sample_pixels[6]) < 3:
                     sample_pixels[6].append((pixel[0], pixel[1], pixel[2]))
-    
-    # Print debug info
-    print(f"Pixel counts by code: {detected_codes}")
-    print(f"Death pit samples: {sample_pixels[4]}")
-    print(f"Teleport samples: {sample_pixels[5]}")
-    print(f"Confusion samples: {sample_pixels[6]}")
     
     # Cluster pixels into individual hazards
     death_pits = cluster_nearby_pixels(death_pit_pixels, max_distance=10)
@@ -194,29 +184,46 @@ if __name__ == "__main__":
     img = Image.open("MAZE_1.png").convert("RGB")
     img_array = np.array(img)
     
-    for r in range(img_array.shape[0]):
-        for c in range(img_array.shape[1]):
+    # Dictionary to track hazard locations in 64x64 grid
+    hazard_locations = {
+        4: set(),  # death pits
+        5: set(),  # teleports
+        6: set()   # confusion
+    }
+    
+    rows, cols = img_array.shape[0], img_array.shape[1]
+    
+    
+    for r in range(rows):
+        for c in range(cols):
             pixel = img_array[r, c]
-            code, _ = get_color_category(pixel[0], pixel[1], pixel[2])
+            code, hazard_type = get_color_category(pixel[0], pixel[1], pixel[2])
             
             if code in [4, 5, 6]:
-                scaled_r, scaled_c = scale_to_64x64(r, c)
+                scaled_r, scaled_c = scale_to_64x64(r, c, img_size=cols)
                 maze[scaled_r, scaled_c] = code
+                hazard_locations[code].add((scaled_r, scaled_c))
     
     # Print hazard locations from the updated maze array
-    print("\n=== Hazards in Maze ===")
+    print("\n=== Hazards in Maze (0-63 coordinates) ===")
     
-    death_pit_coords = list(zip(*np.where(maze == 4)))
-    print(f"\nDeath Pits ({len(death_pit_coords)}):")
-    for coord in sorted(death_pit_coords):
-        print(f"  {coord}")
+    print(f"\nDeath Pits ({len(hazard_locations[4])}):")
+    if hazard_locations[4]:
+        for coord in sorted(hazard_locations[4]):
+            print(f"  {coord}")
+    else:
+        print("  None")
     
-    teleport_coords = list(zip(*np.where(maze == 5)))
-    print(f"\nTeleport Pads ({len(teleport_coords)}):")
-    for coord in sorted(teleport_coords):
-        print(f"  {coord}")
+    print(f"\nTeleport Pads ({len(hazard_locations[5])}):")
+    if hazard_locations[5]:
+        for coord in sorted(hazard_locations[5]):
+            print(f"  {coord}")
+    else:
+        print("  None")
     
-    confusion_coords = list(zip(*np.where(maze == 6)))
-    print(f"\nConfusion Pads ({len(confusion_coords)}):")
-    for coord in sorted(confusion_coords):
-        print(f"  {coord}")
+    print(f"\nConfusion Pads ({len(hazard_locations[6])}):")
+    if hazard_locations[6]:
+        for coord in sorted(hazard_locations[6]):
+            print(f"  {coord}")
+    else:
+        print("  None")
