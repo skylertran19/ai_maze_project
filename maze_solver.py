@@ -15,13 +15,13 @@ TP_G = "green"      # 🟢 → ✳️
 TP_O = "orange"    # 🟡 → ✴️
 TP_P = "purple"    # 🟣 → 🔯
 
-# Build color lookup dictionaries from distinct_colors_dict
+#color lookup dictionaries from distinct_colors_dict
 COLOR_TO_HAZARD = {}
 for hazard_name, colors in DISTINCT_COLORS.items():
     for color in colors:
         COLOR_TO_HAZARD[color] = hazard_name
 
-def get_color_category(r, g, b):
+def get_color_category(r, g, b):#returns (code, type)
     color = (r, g, b)
     # Check if color is in the distinct colors dictionary
     if color in COLOR_TO_HAZARD:
@@ -81,40 +81,29 @@ def load_hazards_from_image(filename):
     confusion_pit_pixels = []
     teleport_pixels = []
     
-    # Track what colors we actually detect
-    detected_codes = {0: 0, 1: 0, 4: 0, 5: 0, 6: 0}
-    sample_pixels = {4: [], 5: [], 6: []}
-    
     rows, cols = img_array.shape[0], img_array.shape[1]
     
     for r in range(rows):
         for c in range(cols):
             pixel = img_array[r, c]
             code, color_info = get_color_category(pixel[0], pixel[1], pixel[2])
-            detected_codes[code] = detected_codes.get(code, 0) + 1
             
             if code == 4:
                 death_pit_pixels.append((r, c))
-                if len(sample_pixels[4]) < 3:
-                    sample_pixels[4].append((pixel[0], pixel[1], pixel[2]))
             elif code == 5:
                 teleport_pixels.append((r, c))
-                if len(sample_pixels[5]) < 3:
-                    sample_pixels[5].append((pixel[0], pixel[1], pixel[2]))
             elif code == 6:
                 confusion_pit_pixels.append((r, c))
-                if len(sample_pixels[6]) < 3:
-                    sample_pixels[6].append((pixel[0], pixel[1], pixel[2]))
     
     # Cluster pixels into individual hazards
-    death_pits = cluster_nearby_pixels(death_pit_pixels, max_distance=10)
-    confusion_pits = cluster_nearby_pixels(confusion_pit_pixels, max_distance=10)
-    teleports = cluster_nearby_pixels(teleport_pixels, max_distance=10)
+    death_pits = cluster_nearby_pixels(death_pit_pixels, max_distance=14)
+    confusion_pits = cluster_nearby_pixels(confusion_pit_pixels, max_distance=14)
+    teleports = cluster_nearby_pixels(teleport_pixels, max_distance=14)
     
     return death_pits, teleports, confusion_pits
 
 def scale_to_64x64(r, c, img_size=1026):
-    """Scale coordinates from full image to 64x64 grid."""
+    #assuming all maze images will be 1026 x 1026
     scaled_r = int(r * 64 / img_size)
     scaled_c = int(c * 64 / img_size)
     # Clamp to valid range
@@ -157,8 +146,8 @@ def solve_maze(filename):
     #find entrance and exit
     start_col = np.where(maze[0] == 0)[0][len(np.where(maze[0] == 0)[0]) // 2]
     end_col = np.where(maze[-1] == 0)[0][len(np.where(maze[-1] == 0)[0]) // 2]
-    start = (0, int(start_col))
-    end = (rows - 1, int(end_col))
+    start = (0, int(start_col)) #top
+    end = (rows - 1, int(end_col)) #bottom
     print(f"Start: {start}, End: {end}")
     path = bfs(maze, start, end)
     print(f"Path length: {len(path)} pixels")
@@ -177,8 +166,7 @@ def solve_maze(filename):
 if __name__ == "__main__":
     maze = solve_maze("MAZE_0.png")
     
-    # Load hazards from MAZE_1
-    print("\n=== Loading Hazards from MAZE_1 ===")
+    # MAZE_1
     death_pits, teleports, confusion_pits = load_hazards_from_image("MAZE_1.png")
     
     img = Image.open("MAZE_1.png").convert("RGB")
@@ -187,12 +175,11 @@ if __name__ == "__main__":
     # Dictionary to track hazard locations in 64x64 grid
     hazard_locations = {
         4: set(),  # death pits
-        5: set(),  # teleports
+        5: {},     # teleports with color info
         6: set()   # confusion
     }
     
     rows, cols = img_array.shape[0], img_array.shape[1]
-    
     
     for r in range(rows):
         for c in range(cols):
@@ -202,10 +189,14 @@ if __name__ == "__main__":
             if code in [4, 5, 6]:
                 scaled_r, scaled_c = scale_to_64x64(r, c, img_size=cols)
                 maze[scaled_r, scaled_c] = code
-                hazard_locations[code].add((scaled_r, scaled_c))
+                
+                if code == 5:  # teleport
+                    hazard_locations[code][(scaled_r, scaled_c)] = hazard_type
+                else:
+                    hazard_locations[code].add((scaled_r, scaled_c))
     
     # Print hazard locations from the updated maze array
-    print("\n=== Hazards in Maze (0-63 coordinates) ===")
+    print("\nHazard Coordinates")
     
     print(f"\nDeath Pits ({len(hazard_locations[4])}):")
     if hazard_locations[4]:
@@ -216,8 +207,9 @@ if __name__ == "__main__":
     
     print(f"\nTeleport Pads ({len(hazard_locations[5])}):")
     if hazard_locations[5]:
-        for coord in sorted(hazard_locations[5]):
-            print(f"  {coord}")
+        for coord in sorted(hazard_locations[5].keys()):
+            color = hazard_locations[5][coord]
+            print(f"  {coord}" + color)
     else:
         print("  None")
     
