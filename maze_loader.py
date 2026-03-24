@@ -14,6 +14,12 @@ TP_G = "green"      # 🟢 → ✳️
 TP_O = "orange"    # 🟡 → ✴️
 TP_P = "purple"    # 🟣 → 🔯
 
+#NO HAZARDS Load maze image and converts to binary grid (1=wall,0=path).
+def loadmaze(filename, threshold=128):
+    img = Image.open(filename).convert("L")  # grayscale
+    maze = (np.array(img) < threshold).astype(int)
+    return maze, img
+
 #color lookup dictionaries from distinct_colors_dict
 COLOR_TO_HAZARD = {}
 for hazard_name, colors in DISTINCT_COLORS.items():
@@ -31,11 +37,11 @@ def get_color_category(r, g, b):#returns (code, type)
         elif hazard_name == "confusion":
             return (6, "confusion")
         elif hazard_name == "greentp" or hazard_name == "greentpdest":
-            return (5, "TP_G")
+            return (5, TP_G)
         elif hazard_name == "yellowtp" or hazard_name == "orangetpdest":
-            return (5, "TP_O")
+            return (5, TP_O)
         elif hazard_name == "purpletp" or hazard_name == "purpletpdest":
-            return (5, "TP_P")
+            return (5, TP_P)
     
     if r > 250 and g > 250 and b > 250:  # navigable (light)
         return (0, None)
@@ -44,7 +50,7 @@ def get_color_category(r, g, b):#returns (code, type)
     
     return (0, None)
 
-def cluster_nearby_pixels(pixels_list, max_distance=10):
+def cluster_nearby_pixels(pixels_list, max_distance=15):
     if not pixels_list:
         return []
     
@@ -72,10 +78,42 @@ def cluster_nearby_pixels(pixels_list, max_distance=10):
     
     return clusters
 
-def load_hazards_from_image(filename):
-    img = Image.open(filename).convert("RGB")
-    img_array = np.array(img)
+def scale_to_64x64(r, c, img_size=1026):
+    #assuming all maze images will be 1026 x 1026
+    scaled_r = int(r * 64 / img_size)
+    scaled_c = int(c * 64 / img_size)
+    # Clamp to valid range
+    scaled_r = min(scaled_r, 63)
+    scaled_c = min(scaled_c, 63)
+    return scaled_r, scaled_c
+
+def printHazards(hazard_locations):
+    print("\nHazard Coordinates")
     
+    print(f"\nDeath Pits ({len(hazard_locations[4])}):")
+    if hazard_locations[4]:
+        for coord in sorted(hazard_locations[4]):
+            print(f"  {coord}")
+    else:
+        print("  None")
+    
+    print(f"\nTeleport Pads ({len(hazard_locations[5])}):")
+    if hazard_locations[5]:
+        for coord in sorted(hazard_locations[5].keys()):
+            color = hazard_locations[5][coord]
+            print(f"  {coord}" + color)
+    else:
+        print("  None")
+    
+    print(f"\nConfusion Pads ({len(hazard_locations[6])}):")
+    if hazard_locations[6]:
+        for coord in sorted(hazard_locations[6]):
+            print(f"  {coord}")
+    else:
+        print("  None")
+
+def detectHazards(img_array): #returns lists of hazards types with coordinates
+    #returns the coordinates in 1026x1026
     death_pit_pixels = []
     confusion_pit_pixels = []
     teleport_pixels = []
@@ -101,17 +139,95 @@ def load_hazards_from_image(filename):
     
     return death_pits, teleports, confusion_pits
 
-def scale_to_64x64(r, c, img_size=1026):
-    #assuming all maze images will be 1026 x 1026
-    scaled_r = int(r * 64 / img_size)
-    scaled_c = int(c * 64 / img_size)
-    # Clamp to valid range
-    scaled_r = min(scaled_r, 63)
-    scaled_c = min(scaled_c, 63)
-    return scaled_r, scaled_c
+def loadHazardsMaze(filename):
+    img = Image.open(filename).convert("RGB")
+    img_array = np.array(img)
+    death_pits, teleports, confusion_pits = detectHazards(img_array)
+    maze = (np.array(img) < 128).astype(int) #1026x1026
+    mazehires = (np.array(Image.open(filename).convert("L")) < 128).astype(int)
 
-#Load maze image and converts to binary grid (1=wall,0=path).
-def loadmaze(filename, threshold=128):
-    img = Image.open(filename).convert("L")  # grayscale
-    maze = (np.array(img) < threshold).astype(int)
-    return maze, img
+
+    hazard_locations = { # in 64x64 coordinates
+        4: set(),  # death pits
+        5: {},     # teleports with color info
+        6: set()   # confusion
+    }
+    
+    rows, cols = img_array.shape[0], img_array.shape[1]
+    
+    for r in range(rows):
+        for c in range(cols):
+            pixel = img_array[r, c]
+            code, hazard_type = get_color_category(pixel[0], pixel[1], pixel[2])
+            
+            if code in [4, 5, 6]:
+                scaled_r, scaled_c = scale_to_64x64(r, c, img_size=cols)
+                maze[scaled_r, scaled_c] = code
+                
+                if code == 5:  # teleport
+                    hazard_locations[code][(scaled_r, scaled_c)] = hazard_type
+                else:
+                    hazard_locations[code].add((scaled_r, scaled_c))
+
+    render_hazards(mazehires, hazard_locations, filename)
+    printHazards(hazard_locations)
+
+def render_hazards(maze, hazard_locations, filename):
+    #Render hazards on top of a black/white maze visualization.
+    # 1026x1026 numpy array 
+    # hazard_locations: keys 4, 5, 6 containing hazard coordinates (64x64)
+    teleport_color_map = {
+        TP_G: (0, 166, 0),       # Green
+        TP_O: (255, 133, 0),     # Orange
+        TP_P: (155, 9, 255),     # Purple
+    }
+    rows, cols = maze.shape
+
+    # Create base black/white image from high-res maze
+    img = Image.new("RGB", (cols, rows))
+    pixels = img.load()
+    
+    for r in range(rows):
+        for c in range(cols):
+            code = maze[r, c]
+            if code == 1:  # Wall
+                color = (0, 0, 0)
+            else:  # Space, hazards, etc.
+                color = (255, 255, 255)
+            pixels[c, r] = color
+    
+    # Now paint hazards on top
+    draw = ImageDraw.Draw(img)
+    radius = 12  # Adjust as needed for 1026x1026 scale
+    # Death pits - red filled circles
+    for (scaled_r, scaled_c) in hazard_locations[4]:
+        # Convert from 64x64 back to 1026x1026 for visualization
+        hires_r = int(scaled_r * 1026 / 64) + 3
+        hires_c = int(scaled_c * 1026 / 64) + 3
+        bbox = [hires_c , hires_r , hires_c + radius, hires_r + radius]
+        draw.ellipse(bbox, fill=(255, 0, 0), outline=(255, 0, 0))
+    
+    # Confusion pits - dark yellow filled squares
+    for (scaled_r, scaled_c) in hazard_locations[6]:
+        hires_r = int(scaled_r * 1026 / 64) + 2.5
+        hires_c = int(scaled_c * 1026 / 64) + 2.5
+        bbox = [hires_c , hires_r , hires_c + radius, hires_r + radius]
+        draw.rectangle(bbox, fill=(200, 200, 0), outline=(200, 200, 0))
+    
+    # Teleports - colored filled circles
+    for (scaled_r, scaled_c), color_type in hazard_locations[5].items():
+        hires_r = int(scaled_r * 1026 / 64) + 2.5
+        hires_c = int(scaled_c * 1026 / 64) + 2.5
+        
+        if color_type in teleport_color_map:
+            color = teleport_color_map[color_type]
+        else:
+            color = (100, 100, 100)
+        
+        bbox = [hires_c , hires_r , hires_c + radius, hires_r + radius]
+        draw.ellipse(bbox, fill=color, outline=color)
+    
+    output_path = filename.replace(".png", "vis.png")
+    img.save(output_path)
+    print(f"High-res maze visualization saved to {output_path}")
+    return img

@@ -54,55 +54,5 @@ if __name__ == "__main__":
     maze = solve_maze("MAZE_0.png")
     
     # MAZE_1
-    death_pits, teleports, confusion_pits = ml.load_hazards_from_image("MAZE_1.png")
+    ml.loadHazardsMaze("MAZE_1.png")
     
-    img = Image.open("MAZE_1.png").convert("RGB")
-    img_array = np.array(img)
-    
-    # Dictionary to track hazard locations in 64x64 grid
-    hazard_locations = {
-        4: set(),  # death pits
-        5: {},     # teleports with color info
-        6: set()   # confusion
-    }
-    
-    rows, cols = img_array.shape[0], img_array.shape[1]
-    
-    for r in range(rows):
-        for c in range(cols):
-            pixel = img_array[r, c]
-            code, hazard_type = ml.get_color_category(pixel[0], pixel[1], pixel[2])
-            
-            if code in [4, 5, 6]:
-                scaled_r, scaled_c = ml.scale_to_64x64(r, c, img_size=cols)
-                maze[scaled_r, scaled_c] = code
-                
-                if code == 5:  # teleport
-                    hazard_locations[code][(scaled_r, scaled_c)] = hazard_type
-                else:
-                    hazard_locations[code].add((scaled_r, scaled_c))
-    
-    # Print hazard locations from the updated maze array
-    print("\nHazard Coordinates")
-    
-    print(f"\nDeath Pits ({len(hazard_locations[4])}):")
-    if hazard_locations[4]:
-        for coord in sorted(hazard_locations[4]):
-            print(f"  {coord}")
-    else:
-        print("  None")
-    
-    print(f"\nTeleport Pads ({len(hazard_locations[5])}):")
-    if hazard_locations[5]:
-        for coord in sorted(hazard_locations[5].keys()):
-            color = hazard_locations[5][coord]
-            print(f"  {coord}" + color)
-    else:
-        print("  None")
-    
-    print(f"\nConfusion Pads ({len(hazard_locations[6])}):")
-    if hazard_locations[6]:
-        for coord in sorted(hazard_locations[6]):
-            print(f"  {coord}")
-    else:
-        print("  None")
