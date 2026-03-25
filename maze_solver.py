@@ -51,8 +51,10 @@ def solve_maze(filename):
     return maze
 
 if __name__ == "__main__":
-    maze = solve_maze("MAZE_0.png")
+    m = solve_maze("MAZE_0.png")
     
     # MAZE_1
-    ml.loadHazardsMaze("MAZE_1.png")
+    cells, hazards, start, goal_pos = ml.getHMaze("MAZE_1.png")
+    #returns array with all the cells in the maze, 64x64, hazards list for interactions, start node for agent, and goal position
+
     
