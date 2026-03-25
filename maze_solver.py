@@ -27,6 +27,46 @@ def bfs(maze, start, end):
         cur = parent.get(cur)
     return path[::-1]  # reverse
 
+class testAgent():
+    def __init__(self, c, start):
+        self.cur = c
+        self.start  = start
+
+    def _apply_hazard(self):
+        # Teleport
+        if self.cur.type == "teleport" and self.cur.tpdest is not None:
+            print(f"Teleported from {self.cur.pos} -> {self.cur.tpdest.pos}")
+            self.cur = self.cur.tpdest
+
+        # Death pit
+        elif self.cur.type == "deathpit":
+            print(f"Fell into death pit at {self.cur.pos}")
+            self.cur = start
+        # Confusion handled in connect(), so nothing needed here
+
+    def move_up(self):
+        if self.cur.up is not None:
+            self.cur = self.cur.up
+            self._apply_hazard()
+
+    def move_down(self):
+        if self.cur.down is not None:
+            self.cur = self.cur.down
+            self._apply_hazard()
+
+    def move_left(self):
+        if self.cur.left is not None:
+            self.cur = self.cur.left
+            self._apply_hazard()
+
+    def move_right(self):
+        if self.cur.right is not None:
+            self.cur = self.cur.right
+            self._apply_hazard()
+
+    def get_pos(self):
+        return self.cur.pos
+
 def solve_maze(filename):
     maze, original_img = ml.loadmaze(filename)
     rows, cols = maze.shape
@@ -56,5 +96,17 @@ if __name__ == "__main__":
     # MAZE_1
     cells, hazards, start, goal_pos = ml.getHMaze("MAZE_1.png")
     #returns array with all the cells in the maze, 64x64, hazards list for interactions, start node for agent, and goal position
+    #starting position for test
 
-    
+    # agent = testAgent(cells[1][17], start) #confusion test
+
+    # agent = testAgent(cells[6][30], start) # teleport test, should end up at 59,55
+
+    agent = testAgent(cells[9][5], start) # deathpit test, should end up at start (0,31)
+
+    print("Start position:", agent.get_pos())
+
+    agent.move_down()
+    #agent.move_up() #confusion test only, should move down isntead and end up at 3,17
+
+    print("End position:", agent.get_pos())
