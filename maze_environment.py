@@ -67,6 +67,12 @@ class MazeEnvironment:
     def reset(self) -> Tuple[int, int]:
         #Reset environment for new episode
         #Returns: Starting position coordinates
+        old_set = self.rotation_sets[self.cur_rotation]
+        new_set = self.rotation_sets[0]
+        for r, c in old_set - new_set:
+            self.cells[r][c].type = "empty"
+        for r, c in new_set - old_set:
+            self.cells[r][c].type = "deathpit"
         self.cur_rotation = 0
         self.cur = self.start_pos
         return self.cur.pos
@@ -127,9 +133,7 @@ class MazeEnvironment:
                 break
         
         result.current_position = self.cur.pos
-        
-        #NEED TO ADD DEATHPIT ROTATIONS STILL
-        # self._rotate_deathpits()
+        self._rotate_deathpits()
         
         return result
     
@@ -235,7 +239,14 @@ class MazeEnvironment:
         #CHANGE CELLS:
             #get rid of old deathpits(should only be the "left" arm?), and add new deathpits
             #dont need to touch the vertices but may do so for now for simplicity
-        pass
+        next_rot = (self.cur_rotation + 1) % 4
+        old_set = self.rotation_sets[self.cur_rotation]
+        new_set = self.rotation_sets[next_rot]
+        for r, c in old_set - new_set:          # cells leaving deathpit zone
+            self.cells[r][c].type = "empty"
+        for r, c in new_set - old_set:          # cells entering deathpit zone
+            self.cells[r][c].type = "deathpit"
+        self.cur_rotation = next_rot
 
 def printHazards(hazard_locations):
     print("\nHazard Coordinates")
