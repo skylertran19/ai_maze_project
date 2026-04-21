@@ -18,12 +18,6 @@ class cell:
         self.up    = None
         self.down  = None
 
-    def connect(self, direction, neighbour):
-        if self.type == "confusion":
-            flipped = {"up": "down", "down": "up", "left": "right", "right": "left"}
-            direction = flipped[direction]
-        setattr(self, direction, neighbour)
-
 class Action(Enum):
     MOVE_UP = 0
     MOVE_DOWN = 1
@@ -61,6 +55,8 @@ class MazeEnvironment:
         self.cur = start_pos
         self.base_image_filename = base_image
         self.cur_rotation = 0
+        self.is_confused = False
+        self.confused_turns_left = 0
         self._apply_deathpits() #finds vertices coords and their directions: self.death_vertices
         self._compute_rotations() #calculate locations of future deathpits, saves them in self.rotation_sets = []
     
@@ -91,47 +87,59 @@ class MazeEnvironment:
             raise ValueError("Actions list must contain 1-5 actions")
         
         result = TurnResult()
+ 
+        FLIP = {"up": "down", "down": "up", "left": "right", "right": "left"}
+        direction_map = {
+            Action.MOVE_UP: 'up',
+            Action.MOVE_DOWN: 'down',
+            Action.MOVE_LEFT: 'left',
+            Action.MOVE_RIGHT: 'right',
+        }
+
+        if self.is_confused:
+            result.is_confused = True
         
         for action in actions:
             result.actions_executed += 1
-            
-            # Map action to direction and attempt movement
-            direction_map = {
-                Action.MOVE_UP: 'up',
-                Action.MOVE_DOWN: 'down',
-                Action.MOVE_LEFT: 'left',
-                Action.MOVE_RIGHT: 'right',
-            }
+ 
             if action == Action.WAIT:
-                #wait
                 pass
             elif action in direction_map:
                 direction = direction_map[action]
+                if self.is_confused:
+                    direction = FLIP[direction]  # flip intended direction
                 neighbor = getattr(self.cur, direction)
-                if neighbor is None: #if wall
+                if neighbor is None:
                     result.wall_hits += 1
                 else:
                     self.cur = neighbor
-            
+ 
             # Apply hazard effects after movement
             if self.cur.type == "deathpit":
                 result.is_dead = True
-                self.cur = self.start_pos  # respawn at start cell
-                break  # end episode
-            
+                self.cur = self.start_pos
+                break
+ 
             elif self.cur.type == "teleport" and self.cur.tpdest is not None:
                 self.cur = self.cur.tpdest
                 result.teleported = True
-            
+ 
             elif self.cur.type == "confusion":
+                # Confused for remainder of this turn + all of next turn
+                self.is_confused = True
+                self.confused_turns_remaining = 2
                 result.is_confused = True
-                # direction flip due to confusion already implemented
-                # into the cell, right/left/up/down pointers from maze construction
-            
+ 
             elif self.cur.type == "goal":
                 result.is_goal_reached = True
                 break
-        
+ 
+        # Tick confusion counter down at end of turn
+        if self.is_confused:
+            self.confused_turns_remaining -= 1
+            if self.confused_turns_remaining <= 0:
+                self.is_confused = False
+ 
         result.current_position = self.cur.pos
         self._rotate_deathpits()
         
