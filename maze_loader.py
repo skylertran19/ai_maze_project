@@ -47,7 +47,7 @@ def get_color_category(r, g, b):#returns (code, type)
     
     if r > 250 and g > 250 and b > 250:  # navigable (light)
         return (0, None)
-    if r < 10 and g < 10 and b < 10:  # black | wall
+    if r < 5 and g < 5 and b < 5:  # black | wall
         return (1, None)
     
     return (0, None)
@@ -209,13 +209,13 @@ def render_hazards(maze, hazard_locations, filename):
     #layer hazards on top
     draw = ImageDraw.Draw(img)
     radius = 12  # Adjust as needed for 1026x1026 scale
-    # Death pits - red filled circles
-    for (scaled_r, scaled_c) in hazard_locations[4]:
-        # Convert 1026x1026 for visualization
-        hires_r = int(scaled_r * 1026 / 64) + 3
-        hires_c = int(scaled_c * 1026 / 64) + 3
-        bbox = [hires_c , hires_r , hires_c + radius, hires_r + radius]
-        draw.ellipse(bbox, fill=(255, 0, 0), outline=(255, 0, 0))
+    # # Death pits - red filled circles CHANGE: render in maze class to do deathpit rotations
+    # for (scaled_r, scaled_c) in hazard_locations[4]:
+    #     # Convert 1026x1026 for visualization
+    #     hires_r = int(scaled_r * 1026 / 64) + 3
+    #     hires_c = int(scaled_c * 1026 / 64) + 3
+    #     bbox = [hires_c , hires_r , hires_c + radius, hires_r + radius]
+    #     draw.ellipse(bbox, fill=(255, 0, 0), outline=(255, 0, 0))
     
     # Confusion pits - dark yellow filled squares
     for (scaled_r, scaled_c) in hazard_locations[6]:
@@ -237,7 +237,7 @@ def render_hazards(maze, hazard_locations, filename):
         bbox = [hires_c , hires_r , hires_c + radius, hires_r + radius]
         draw.ellipse(bbox, fill=color, outline=color)
     
-    output_path = filename.replace(".png", "vis.png")
+    output_path = filename.replace(".png", "base.png")
     img.save(output_path)
     return img
  
