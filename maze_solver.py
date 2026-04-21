@@ -2,6 +2,7 @@ from PIL import Image, ImageDraw
 import numpy as np
 from collections import deque
 import maze_loader as ml
+# import maze_environment as me
 
 #Uses BFS to find shortest path to exit
 def bfs(maze, start, end):
@@ -91,6 +92,7 @@ def solve_maze(filename):
     return maze
 
 if __name__ == "__main__":
+    #solves hazardless maze with bfs
     m = solve_maze("MAZE_0.png")
     
     # MAZE_1
