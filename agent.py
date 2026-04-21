@@ -10,7 +10,7 @@ import numpy as np
 5. Repeat until episode ends
 """
 
-""" Cell class for reference, currently in maze_solver.py
+""" Cell class for reference, currently in maze_environment.py
 class cell:
     #single position in the 64x64
     __slots__ = ('pos', 'type', 'tpcolor', 'tpdest', 'right', 'left', 'up', 'down')
