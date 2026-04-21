@@ -61,9 +61,8 @@ class MazeEnvironment:
         self.cur = start_pos
         self.base_image_filename = base_image
         self.cur_rotation = 0
-
-        self._apply_deathpits() #self.death_vertices
-    
+        self._apply_deathpits() #finds vertices coords and their directions: self.death_vertices
+        self._compute_rotations() #calculate locations of future deathpits, saves them in self.rotation_sets = []
     
     def reset(self) -> Tuple[int, int]:
         #Reset environment for new episode
@@ -133,82 +132,110 @@ class MazeEnvironment:
         # self._rotate_deathpits()
         
         return result
+    
     def get_episode_stats(self) -> dict:
         """
         Get statistics for current episode
         """
         #lowk what kind of statistics
         pass
-    
-    def _rotate_deathpits(self):
-        #rotate clockwise, change cells
-        pass
-    def _apply_deathpits(self):
+
+    def _apply_deathpits(self): #find vertices of deathpit clumps
         self.death_vertices = []
         # deathpits take over an area of 7x4
 
         for coord in self.hazards[4]:
             r, c = coord
-            diag_count = 0
-            for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
-                nr, nc = r + dr, c + dc
-                if (nr, nc) in self.hazards[4]:
-                    diag_count += 1
-            if diag_count > 1:
-                self.death_vertices.append(coord)
-
+            diag_neighbors = [(r+dr, c+dc) for dr,dc in [(-1,-1),(-1,1),(1,-1),(1,1)]
+                              if (r+dr, c+dc) in self.hazards[4]]
+            for i in range(len(diag_neighbors)):
+                for j in range(i+1, len(diag_neighbors)):
+                    dr1, dc1 = diag_neighbors[i][0]-r, diag_neighbors[i][1]-c
+                    dr2, dc2 = diag_neighbors[j][0]-r, diag_neighbors[j][1]-c
+                    if (dr1 == dr2 and dc1 != dc2) or (dc1 == dc2 and dr1 != dr2):
+                        self.death_vertices.append((coord, self.deathpit_direction(coord)))#vertex coordinates AND its direction
+                        break 
         #need to account when the vertex is on the edge of the map
         #or only showing one arm atm, only one vertex in a large area, etc
+    
+    def _compute_rotations(self): #do in constructor, to easily switch each turn
+        #Saves the coordinates of all deathpits, stored in rotation_sets[x], x being the rotation it belongs to
+        #rotation 0
+        self.rotation_sets = {0: set(self.hazards[4])}
 
-    def _render_deathpits(self):
+        ARM_DIRS = {
+            "up":    [(-1,-1), (-1,+1)],
+            "right": [(-1,+1), (+1,+1)],
+            "down":  [(+1,-1), (+1,+1)],
+            "left":  [(-1,-1), (+1,-1)],
+        }
+        CLOCKWISE = ["up", "right", "down", "left"]
+        ARM_LENGTH = 3
+
+        #rotation 1 - 3
+        for rotation in range(1, 4):
+            coords = set()
+            for vertex, base_dir in self.death_vertices:
+                vr, vc = vertex
+                coords.add(vertex)
+                rot_dir = CLOCKWISE[(CLOCKWISE.index(base_dir) + rotation) % 4]
+                for dr, dc in ARM_DIRS[rot_dir]:
+                    for step in range(1, ARM_LENGTH + 1):
+                        nr, nc = vr + dr*step, vc + dc*step
+                        if 0 <= nr < 64 and 0 <= nc < 64:
+                            coords.add((nr, nc))
+            self.rotation_sets[rotation] = coords
+            #get directions of current vertices
+            #change directions to next rotation
+            #calculate locations of their arms, save in rotation_sets
+
+        #render images for the 4 rotations with the coordinates
+        for rot in range(4):
+            self._render_deathpits(rot)
+ 
+    def _render_deathpits(self, rotation): #called by _compute_rotations, only do once
+        # Draws deathpit circles for the given rotation onto the base image.
+        # Uses self.rotation_sets[rotation] coordinates only, doesnt touch cells
         img = Image.open(self.base_image_filename).copy()
         draw = ImageDraw.Draw(img)
-        radius = 12  #same as render_hazards in maze_loader
-        
-        # Draw red circles for each deathpit
-        for (scaled_r, scaled_c) in self.hazards[4]:
-            # Convert from 64x64 to 1026x1026 coordinates
+        radius = 12
+ 
+        for (scaled_r, scaled_c) in self.rotation_sets[rotation]:
             hires_r = int(scaled_r * 1026 / 64) + 3
             hires_c = int(scaled_c * 1026 / 64) + 3
-            
-            # Create bounding box for the circle
             bbox = [hires_c, hires_r, hires_c + radius, hires_r + radius]
             draw.ellipse(bbox, fill=(255, 0, 0), outline=(255, 0, 0))
-        
-        output_path = self.base_image_filename.replace(".png", f"_rotation{self.cur_rotation}.png")
+ 
+        output_path = self.base_image_filename.replace("base.png", f"_rot{rotation}.png")
         img.save(output_path)
-        
         return img
     
     def deathpit_direction(self, vertex):
-        if(vertex not in self.hazards[4]):
-            return -1
+        if vertex not in self.hazards[4]:
+            return None
         r, c = vertex
-
-        #regular vertices; they have deathpits in 2 diagonal directions
-        if (r - 1, c + 1) in self.hazards[4]:
-            if(r + 1, c + 1) in self.hazards[4]: #v
-                return 0
-            elif (r - 1, c - 1) in self.hazards[4]: #>
-                return 3
-            #later
-        if (r + 1, c + 1) in self.hazards[4]:
-            if(r + 1, c - 1) in self.hazards[4]: #^
-                return 2
-            elif (r - 1, c + 1) in self.hazards[4]: #<
-                return 1
-            
+        diag_neighbors = [(r+dr, c+dc) for dr,dc in [(-1,-1),(-1,1),(1,-1),(1,1)]
+                          if (r+dr, c+dc) in self.hazards[4]]
+        for i in range(len(diag_neighbors)):
+            for j in range(i+1, len(diag_neighbors)):
+                dr1, dc1 = diag_neighbors[i][0]-r, diag_neighbors[i][1]-c
+                dr2, dc2 = diag_neighbors[j][0]-r, diag_neighbors[j][1]-c
+                if dr1 == dr2 and dc1 != dc2:
+                    return "down" if dr1 > 0 else "up"   # arms same row side
+                if dc1 == dc2 and dr1 != dr2:
+                    return "right" if dc1 > 0 else "left" # arms same col side
+        return None
+        
         #need to account for deathpits only in one diagnonal direction
-        #ignoring rn since maze1 has complete deathpits
-
-        #only one deathpit, assuming there will be no deathpits at 0,0, 0,63, 63,0, or 63,63
-        if 0 < r < 63 and c == 0: return 0 #v
-        if 0 < r < 63 and c == 63: return 1 # <
-        if r == 63 and 0 < c < 63: return 2 #^
-        if r == 0 and 0 < c < 63: return 3 #>
-
-        return -1
-
+        #ignoring rn since maze1 has clear deathpit vertices
+    
+    
+    def _rotate_deathpits(self):
+        #rotate clockwise from whatever we're on
+        #CHANGE CELLS:
+            #get rid of old deathpits(should only be the "left" arm?), and add new deathpits
+            #dont need to touch the vertices but may do so for now for simplicity
+        pass
 
 def printHazards(hazard_locations):
     print("\nHazard Coordinates")
