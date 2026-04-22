@@ -1,18 +1,20 @@
+#processes maze image in to matrix and hazard information
 from PIL import Image, ImageDraw
 import numpy as np
 from distinct_colors_dict import DISTINCT_COLORS
+import maze_environment as me
 
 # Matrix codes:
 # 0 = Empty/navigable cell
 # 1 = Wall
 # 2 = Start 'S' (empty space on outer edge)
 # 3 = Goal/Exit 'G' (empty space on outer edge)
-# 4 = Death pits 'P' 🔥
-# 5 = Teleport pad 'T' 🟢#41d281 ✳️#3cc676 🟡#ecb331 ✴️#ff8536 🟣#714eb5 🔯#814de5
-# 6 = Confusion pad 'C' 😵‍💫 (not specified as 6 in the instructions) #ffc534 face #5e3327 lines
-TP_G = "green"      # 🟢 → ✳️
-TP_O = "orange"    # 🟡 → ✴️
-TP_P = "purple"    # 🟣 → 🔯
+# 4 = Death pits 'P' [fire]
+# 5 = Teleport pad 'T' [green]#41d281 [green_dest]#3cc676 [yellow]#ecb331 [yellow_dest]#ff8536 [purple]#714eb5 [purple_dest]#814de5
+# 6 = Confusion pad 'C' [confused] (not specified as 6 in the instructions) #ffc534 face #5e3327 lines
+TP_G = "green"      # [green] -> [green_dest]
+TP_O = "orange"    # [yellow] -> [yellow_dest]
+TP_P = "purple"    # [purple] -> [purple_dest]
 
 #NO HAZARDS Load maze image and converts to binary grid (1=wall,0=path).
 def loadmaze(filename, threshold=128):
@@ -86,31 +88,6 @@ def scale_to_64x64(r, c, img_size=1026):
     scaled_r = min(scaled_r, 63)
     scaled_c = min(scaled_c, 63)
     return scaled_r, scaled_c
-
-def printHazards(hazard_locations):
-    print("\nHazard Coordinates")
-    
-    print(f"\nDeath Pits ({len(hazard_locations[4])}):")
-    if hazard_locations[4]:
-        for coord in sorted(hazard_locations[4]):
-            print(f"  {coord}")
-    else:
-        print("  None")
-    
-    print(f"\nTeleport Pads ({len(hazard_locations[5])}):")
-    if hazard_locations[5]:
-        for coord in sorted(hazard_locations[5].keys()):
-            color = hazard_locations[5][coord]
-            print(f"  {coord}" + color)
-    else:
-        print("  None")
-    
-    print(f"\nConfusion Pads ({len(hazard_locations[6])}):")
-    if hazard_locations[6]:
-        for coord in sorted(hazard_locations[6]):
-            print(f"  {coord}")
-    else:
-        print("  None")
 
 def detectHazards(img_array): #returns lists of hazards types with coordinates
     #returns the coordinates in 1026x1026
@@ -202,7 +179,7 @@ def loadHazardsMaze(filename):
                     hazard_locations[code].add((pr, pc))
  
     render_hazards(mazehires, hazard_locations, filename)
-    printHazards(hazard_locations)
+    me.printHazards(hazard_locations)
     return thick, hazard_locations
  
 def render_hazards(maze, hazard_locations, filename):
@@ -263,31 +240,10 @@ def render_hazards(maze, hazard_locations, filename):
     output_path = filename.replace(".png", "vis.png")
     img.save(output_path)
     return img
-
-class cell:
-    #single position in the 64x64
-    __slots__ = ('pos', 'type', 'tpcolor', 'tpdest', 'right', 'left', 'up', 'down')
- 
-    def __init__(self, pos, cell_type, tpcolor=None, tpdest=None):
-        self.pos     = pos        # (row, col) in 64x64 grid
-        self.type    = cell_type  # "empty" | "start" | "goal" | "deathpit" | "teleport" | "confusion"
-        self.tpcolor = tpcolor    # teleport colour string, or None
-        self.tpdest  = tpdest     # destination cell object if teleport
-        self.right = None #none means there is a wall in this direction
-        self.left  = None
-        self.up    = None
-        self.down  = None
-
-    #may implement this somewhere else
-    def connect(self, direction, neighbour):
-        if self.type == "confusion":
-            flipped = {"up": "down", "down": "up", "left": "right", "right": "left"}
-            direction = flipped[direction]
-        setattr(self, direction, neighbour)
  
  
 def getHMaze(filename):
-    # node array 64x64 array of cells for agent to talk, haz dict, start cell, and goal position
+    #returns node array 64x64 array of cells for agent, haz dict, start cell, and goal position
     thick, haz = loadHazardsMaze(filename)
     N = 64
  
@@ -311,7 +267,7 @@ def getHMaze(filename):
             elif code == 6: cell_type = "confusion"
             else:           cell_type = "empty"
  
-            n = cell((pr, pc), cell_type, tpcolor=tpcolor)
+            n = me.cell((pr, pc), cell_type, tpcolor=tpcolor)
             nodes[pr, pc] = n
  
             if cell_type == "start":
@@ -332,7 +288,7 @@ def getHMaze(filename):
             for direction, (dr, dc) in DIRS.items():
                 nr, nc = pr + dr, pc + dc
                 if not (0 <= nr < N and 0 <= nc < N):
-                    continue  # boundary — leave neighbour as None
+                    continue  # boundary - leave neighbour as None
                 edge_tr = (2*pr+1) + dr
                 edge_tc = (2*pc+1) + dc
                 if thick[edge_tr, edge_tc] == 0:   # opening exists
